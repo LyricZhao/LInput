@@ -2,12 +2,15 @@
 
 import json
 import struct
+import jieba
 
+from pypinyin import lazy_pinyin
 from dic import Dic
 
 class Trainer:
     def __init__(self, dic):
         self.dic = dic
+        self.jieba = True
         self.dic_size = self.dic.size()
         self.count = [0] * self.dic_size
         self.mat = [[0.0 for j in range(self.dic_size)] for i in range(self.dic_size)]
@@ -25,15 +28,25 @@ class Trainer:
         print('done !')
         return
 
-    def analyze_sentence(self, sentence):
-        for ch in sentence:
-            self.count[self.dic.chs[ch]] += 1
-        for i in range(0, len(sentence) - 1):
-            self.insert_word(sentence[i], sentence[i + 1])
+    def convert_pinyin(self, ch, pinyin):
+        if not pinyin in self.dic.rhs[ch]:
+            return self.dic.rhs[ch][0]
+        if pinyin == 'lve': return 'lue'
+        if pinyin == 'nve': return 'nue'
+        return pinyin
+
+    def analyze_sentence(self, sentence, count=1):
+        # print(sentence)
+        pinyin = lazy_pinyin(sentence, strict=False)
+        pinyin = [self.convert_pinyin(sentence[i], pinyin[i]) for i in range(len(pinyin))]
+        for i in range(len(sentence)):
+            self.count[self.dic.chs[sentence[i] + pinyin[i]]] += count
+        for i in range(len(sentence) - 1):
+            self.insert_word(sentence[i] + pinyin[i], sentence[i + 1] + pinyin[i + 1], count)
         return
 
-    def insert_word(self, cha, chb):
-        self.mat[self.dic.chs[cha]][self.dic.chs[chb]] += 1.0
+    def insert_word(self, cha, chb, count):
+        self.mat[self.dic.chs[cha]][self.dic.chs[chb]] += count
         return
 
     def build(self):
@@ -53,19 +66,33 @@ class Trainer:
                 sentence += ch
             else:
                 self.analyze_sentence(sentence)
+                if self.jieba:
+                    for words in jieba.cut(sentence, cut_all=True):
+                        self.analyze_sentence(words)
                 sentence = ''
         return
 
-    def feed(self, data_path):
+    def feed(self, data_path, jbc=False):
         print('Feeding data in ' + data_path + ' ... ', end='', flush=True)
-        with open(data_path, 'r') as f:
-            for line in f.readlines():
-                data = json.loads(line)['html']
-                self.analyze(data)
+        if jbc:
+            with open(data_path, 'r') as f:
+                for line in f.readlines():
+                    [w, c, v] = line.split()
+                    in_dict = True
+                    for ch in w:
+                        in_dict &= self.dic.has_key(ch)
+                    if in_dict:
+                        self.analyze_sentence(w, int(c))
+        else:  
+            with open(data_path, 'r') as f:
+                for line in f.readlines():
+                    data = json.loads(line)['html']
+                    self.analyze(data)
         print('done !')
         return
 
 def train(config_path):
+    jieba.initialize() # init jieba
     print('Loading training config ... ', end='', flush=True)
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -74,9 +101,10 @@ def train(config_path):
     print('done !')
 
     dic = Dic()
-    dic.read_dict(config['dic'])
+    dic.read_dict(config['dic'], config['word'])
     
     trainer = Trainer(dic)
+    trainer.feed(config['word'], True)
     for data in config['data']:
         trainer.feed(data)
     trainer.build()

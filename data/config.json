@@ -1,16 +1,10 @@
 {
     "n_gram": 2,
     "data": [
-        "data/arts/2016-02.txt",
-        "data/arts/2016-04.txt",
-        "data/arts/2016-05.txt",
-        "data/arts/2016-06.txt",
-        "data/arts/2016-07.txt",
-        "data/arts/2016-08.txt",
-        "data/arts/2016-09.txt",
-        "data/arts/2016-10.txt",
+        "data/jbc.txt",
         "data/arts/2016-11.txt"
     ],
+    "word": "data/jbc.txt",
     "dic": "data/dic.txt",
-    "model": "model/g3_debug.model"
+    "model": "model/g2_debug_jieba_duoyin_dic.model"
 }

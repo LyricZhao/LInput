@@ -10,16 +10,23 @@ class Translater:
         self.dic = dic
         self.n_gram = n_gram
         self.load_model(model_path)
-        self.alpha = 0.2
-        self.beta = 1 - self.alpha
+        self.set_weight(0.3, 0.00001)
         return
+
+    def set_weight(self, a, g):
+        self.alpha = a
+        self.gamma = g
+        self.beta = 1 - a - g
 
     def load_model(self, model_path):
         print('Loading model ' + model_path + ' ... ', end='', flush=True)
         with open(model_path, 'rb') as f:
             (self.dic_size,) = struct.unpack('i', f.read(4))
             count = struct.unpack(str(self.dic_size) + 'i', f.read(4 * self.dic_size))
-            self.c_poss = [i / (1.0 * self.dic_size) for i in count]
+            total = 0
+            for i in count:
+                total += i
+            self.c_poss = [i / (1.0 * total) for i in count]
             del count
             mat_data = struct.unpack(str(self.dic_size * self.dic_size) + 'f', f.read(4 * self.dic_size * self.dic_size))
             self.mat = [[ mat_data[i * self.dic_size + j] for j in range(self.dic_size)] for i in range(self.dic_size)]
@@ -31,16 +38,35 @@ class Translater:
         print('Pinyin Shell: type pinyin and translate, exit to quit')
         while True:
             py = input('Pinyin: ')
-            if py == 'exit':
+            if py == 'exit' or py == '':
                 break
             else:
-                print('Result: ' + self.translate_sentence(py))
+                args = py.split()
+                if args[0] == 'a':
+                    self.set_weight(float(args[1]), self.gamma)
+                elif args[0] == 'g':
+                    self.set_weight(self.alpha, float(args[1]))
+                else:
+                    print('Result: ' + self.translate_sentence(py))
         return
 
     def calc_poss(self, curr, next):
+        if curr == -1: cc = ''
+        else: cc = self.dic.set[curr]
+        nc = self.dic.set[next]
+        # if self.c_poss[next] > 1e-3:
+        #   print(self.dic.set[next])
+        #   print(self.c_poss[next])
+        poss = self.gamma * max(2 * self.dic.word_predict(cc + nc), 0.01 * self.dic.word_predict(nc))
+        poss += self.c_poss[next] * self.alpha
         if curr == -1:
-            return self.c_poss[next]
-        return self.c_poss[next] * self.alpha + self.mat[curr][next] * self.beta
+            return poss
+        # if self.mat[curr][next]:
+        #    print(self.dic.set[curr] + self.dic.set[next])
+        #    print(self.mat[curr][next])
+        #    print(max(2 * self.dic.word_predict(cc + nc), 0.01 * self.dic.word_predict(nc)))
+        poss += self.mat[curr][next] * self.beta
+        return poss
 
     def translate_sentence(self, sentence):
         procs = sentence.split()
@@ -53,7 +79,7 @@ class Translater:
         for proc in procs:
             n_f = []; n_g = []; curr_chs = []
             for ch in self.dic.map[proc]:
-                bid = self.dic.chs[ch]
+                bid = self.dic.chs[ch + proc]
                 curr_chs.append(bid)
                 max_poss = -1; max_cp = ''
                 for lc_id in range(len(last_chs)):
@@ -90,7 +116,7 @@ def translate(config_path, input_path, output_path):
     print('done !')
 
     dic = Dic()
-    dic.read_dict(config['dic'])
+    dic.read_dict(config['dic'], config['word'])
     
     translater = Translater(dic, n_gram, config['model'])
     if input_path == '':
