@@ -9,7 +9,8 @@ class Dic:
         self.map[''] = -1
         self.chs = {} # char+pingyin to id
         self.set = [] # id to char
-        self.set_py = [] # id to pingyin
+        self.set_py = [] # cid to pinyin
+        self.map_py = {} # pinyin to pid
         self.rhs = {} # chars to procs
         self.wdb = {} # wordbook
         self.pyc = {} # py count
@@ -19,6 +20,8 @@ class Dic:
         self.cacc = [] # char to acc array
         self.cacc_bk = [] # char to bk array
         self.cacc_py = [] # id, py, dict
+        self.thg = {} # 3 count
+        self.thg_t = {} # 2 in 3 count
         self.word_count = 0
         return
 
@@ -69,8 +72,10 @@ class Dic:
             return 1
         if not word in self.wdb:
             return 0.1
-        print('q' + word)
-        print(1.0 * self.wdb[word] / self.word_count * 100000)
+        # print('q' + word)
+        # print(1.0 * self.wdb[word] / self.word_count * 100000)
+        if len(word) >= 4 and word[1:4] == '经网络':
+            print((word, max(0.2, min(1.0 * self.wdb[word] / self.word_count * 100000, 1.0))))
         return max(0.2, min(1.0 * self.wdb[word] / self.word_count * 100000, 1.0))
 
     def iword2(self, lc, npos, py, count):
@@ -92,17 +97,35 @@ class Dic:
             self.cacc_bk[ch][pos] += count
         return
 
+    def ituple(self, key, count):
+        if not key in self.thg:
+            self.thg[key] = 0
+        self.thg[key] += count
+        return
+
+    def ituple2(self, key, count):
+        if not key in self.thg_t:
+            self.thg_t[key] = 0
+        self.thg_t[key] += count
+        return
+
     def combine_ch(self, c, p):
         return self.chs[c + p]
 
     def combine_word(self, c1, p1, c2, p2):
         return (self.chs[c1 + p1] << 16) | (self.chs[c2 + p2])
 
+    def combine_word3(self, c1, p1, c2, p2, c3, p3):
+        return (self.chs[c1 + p1] << 32) | (self.chs[c2 + p2] << 16) | (self.chs[c3 + p3])
+
     def load_acc_word(self, word, count, py):
         for i in range(len(word) - 1):
             self.iword(self.combine_word(word[i], py[i], word[i + 1], py[i + 1]), i, count)
             self.iword2(self.combine_ch(word[i], py[i]), i, py[i + 1], count)
             self.ichar(self.combine_ch(word[i], py[i]), i, count)
+        for i in range(len(word) - 2):
+            self.ituple(self.combine_word3(word[i], py[i], word[i + 1], py[i + 1], word[i + 2], py[i + 2]), count)
+            self.ituple2((self.combine_word(word[i], py[i], word[i + 1], py[i + 1]) << 16) | self.map_py[py[i + 2]], count)
         self.ichar(self.combine_ch(word[len(word) - 1], py[len(py) - 1]), len(word) - 1, count, last=True)
         return
 
@@ -123,6 +146,13 @@ class Dic:
         if not word in self.lacc:
             return 0
         return self.lacc[word][npos]
+
+    def acc_word_ct3(self, llc, nc):
+        word = (llc << 16) | nc
+        llc = (llc << 16) | self.map_py[self.set_py[nc]]
+        if (not llc in self.thg_t) or (not word in self.thg):
+            return 0
+        return float(self.thg[word]) / float(self.thg_t[llc])
 
     def acc_ks(self, lc, npos, py):
         if not py in self.cacc_py[lc][npos]:
@@ -147,7 +177,7 @@ class Dic:
             return 0
         count = self.acc_word_ct(lc, nc, npos)
         sum = self.acc_ks(lc, npos, self.set_py[nc])
-        print((count, sum))
+        # print((count, sum))
         if sum == 0:
             return 0
         return float(count) / float(sum)
@@ -155,9 +185,12 @@ class Dic:
     def read_dict(self, dict_path, word_path, lacc=False):
         print('Reading dictionary file ... ', end='', flush=True)
         with open(dict_path, 'r') as f:
+            py_count = 0
             for line in f.readlines():
                 data = line.split()
                 self.map[data[0]] = data[1:]
+                self.map_py[data[0]] = py_count
+                py_count += 1
                 for ch in data[1:]:
                     self.push(ch, data[0])
         with open(word_path, 'r') as f:

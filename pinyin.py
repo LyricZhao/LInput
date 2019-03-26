@@ -12,7 +12,6 @@ parser.add_argument('--input', type=str, default='', help='Input file path for t
 parser.add_argument('--output', type=str, default='', help='Output file path for test mode')
 
 options = parser.parse_args()
-print(options.train)
 if options.train != '':
     trainer.train(options.train)
 

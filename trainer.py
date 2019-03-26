@@ -10,6 +10,7 @@ from dic import Dic
 class Trainer:
     def __init__(self, dic):
         self.dic = dic
+        self.step = 0.05
         self.jieba = True
         self.dic_size = self.dic.size()
         self.count = [0] * self.dic_size
@@ -78,7 +79,7 @@ class Trainer:
         if jbc:
             with open(data_path, 'r') as f:
                 lines = f.readlines()
-                prog = 0, tot = len(lines), target = 0.1
+                prog = 0; tot = len(lines); target = self.step
                 for line in lines:
                     [w, c, v] = line.split()
                     in_dict = True
@@ -89,7 +90,7 @@ class Trainer:
                     prog += 1
                     if float(prog) / tot >= target - 1e-5:
                         print('- Current progress: ' + str(target * 100) + ' %', flush=True)
-                        target += 0.1
+                        target += self.step
         else:  
             with open(data_path, 'r') as f:
                 for line in f.readlines():
