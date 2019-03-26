@@ -39,10 +39,14 @@ class Trainer:
         # print(sentence)
         pinyin = lazy_pinyin(sentence, strict=False)
         pinyin = [self.convert_pinyin(sentence[i], pinyin[i]) for i in range(len(pinyin))]
-        for i in range(len(sentence)):
-            self.count[self.dic.chs[sentence[i] + pinyin[i]]] += count
-        for i in range(len(sentence) - 1):
-            self.insert_word(sentence[i] + pinyin[i], sentence[i + 1] + pinyin[i + 1], count)
+        word_cut = jieba.cut(sentence)
+        word_cut = [w for w in word_cut]
+        cur_pos = -1
+        for i in range(len(word_cut) - 1):
+            cur_pos += len(word_cut[i])
+            assert cur_pos >= 0
+            self.count[self.dic.chs[sentence[cur_pos] + pinyin[cur_pos]]] += count
+            self.insert_word(sentence[cur_pos] + pinyin[cur_pos], sentence[cur_pos + 1] + pinyin[cur_pos + 1], count)
         return
 
     def insert_word(self, cha, chb, count):
@@ -66,29 +70,32 @@ class Trainer:
                 sentence += ch
             else:
                 self.analyze_sentence(sentence)
-                if self.jieba:
-                    for words in jieba.cut(sentence, cut_all=True):
-                        self.analyze_sentence(words)
                 sentence = ''
         return
 
     def feed(self, data_path, jbc=False):
-        print('Feeding data in ' + data_path + ' ... ', end='', flush=True)
+        print('Feeding data in ' + data_path + ' ... ', flush=True)
         if jbc:
             with open(data_path, 'r') as f:
-                for line in f.readlines():
+                lines = f.readlines()
+                prog = 0, tot = len(lines), target = 0.1
+                for line in lines:
                     [w, c, v] = line.split()
                     in_dict = True
                     for ch in w:
                         in_dict &= self.dic.has_key(ch)
                     if in_dict:
                         self.analyze_sentence(w, int(c))
+                    prog += 1
+                    if float(prog) / tot >= target - 1e-5:
+                        print('- Current progress: ' + str(target * 100) + ' %', flush=True)
+                        target += 0.1
         else:  
             with open(data_path, 'r') as f:
                 for line in f.readlines():
                     data = json.loads(line)['html']
                     self.analyze(data)
-        print('done !')
+        print('- done !')
         return
 
 def train(config_path):
@@ -104,7 +111,7 @@ def train(config_path):
     dic.read_dict(config['dic'], config['word'])
     
     trainer = Trainer(dic)
-    trainer.feed(config['word'], True)
+    # trainer.feed(config['word'], True)
     for data in config['data']:
         trainer.feed(data)
     trainer.build()
