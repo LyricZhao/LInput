@@ -12,16 +12,18 @@ class Translater:
         self.load_model(model_path)
         self.set_weight(0.3, 0.00001)
         self.wng = {}
-        self.set_weight_ng(0.9, 0.1, 0.01, 0.01, 0.98, 1)
+        self.eps = 1e-2
+        self.set_weight_ng(0.6, 0.01, 0.01, 0.01, 0.4, 1, 30)
         return
 
-    def set_weight_ng(self, a, b, c, d, e, q):
+    def set_weight_ng(self, a, b, c, d, e, q, l):
         self.wng['a'] = a
         self.wng['b'] = b
         self.wng['c'] = c
         self.wng['d'] = d
         self.wng['e'] = e
         self.wng['q'] = q
+        self.wng['l'] = l
         return
 
     def set_weight(self, a, g):
@@ -121,6 +123,8 @@ class Translater:
             if lc != -1:
                 poss += self.wng['b'] * self.mat[lc][nc] # a new word
         # print(poss, flush=True)
+        # if poss > 1e-1:
+        #    print((self.dic.set[lc], self.dic.set[nc], npos, poss, self.mat[lc][nc]))
         return poss
 
     def calc_poss_ng3(self, l2c, nc, npos, lp, aa='', bb=''):
@@ -137,14 +141,17 @@ class Translater:
                 poss += self.wng['e'] * self.mat[lc][nc]
                 poss *= self.wng['q']
         else:
-            poss += self.wng['a'] * self.dic.acc_word_ct3(l2c, nc)
+            if npos > 1:
+                poss += self.wng['a'] * self.dic.acc_word_ct3(l2c, nc)
+            else:
+                poss += self.wng['a'] * self.dic.predict_acc_ct(lc, nc, npos - 1)
             poss += self.wng['b'] * self.mat[lc][nc] # new word
-        if self.dic.set[llc] == '神' and self.dic.set[lc] == '经' and self.dic.set[nc] == '网':
-            print((self.dic.set[nc], poss, aa, bb))
-        if self.dic.set[llc] == '经' and self.dic.set[lc] == '网' and self.dic.set[nc] == '络':
-            print((self.dic.set[nc], poss, aa, bb))      
-        if self.dic.set[nc] == '望' and npos == 0:
-            print((self.dic.set[nc], poss, aa, bb))
+        # if self.dic.set[llc] == '神' and self.dic.set[lc] == '经' and self.dic.set[nc] == '网':
+        #     print((self.dic.set[nc], poss, aa, bb))
+        # if self.dic.set[llc] == '经' and self.dic.set[lc] == '网' and self.dic.set[nc] == '络':
+        #     print((self.dic.set[nc], poss, aa, bb))      
+        # if (self.dic.set[nc] == '望' or self.dic.set[nc] == '落') and npos == 0:
+        #     print((self.dic.set[nc], poss, aa, bb))
         return poss
 
     def translate_sentence_ng3(self, sentence):
@@ -162,7 +169,9 @@ class Translater:
             n_f = []; n_g = []
             c1_chs = [self.dic.chs[ch + proc] for ch in self.dic.map[proc]]
             c2_chs = []
+            lc_id = -1
             for lc in l1_chs:
+                lc_id += 1
                 for ch in self.dic.map[proc]:
                     bid = self.dic.chs[ch + proc]
                     c2_chs.append((lc << 16) | bid)
@@ -170,12 +179,12 @@ class Translater:
                     # a new beginning
                     max_poss = -1; max_cp = ''
                     for i in range(7):
-                        for lc2_id in range(len(l2_chs)):
-                            if not ((l2_chs[lc2_id] & 65535) == lc): continue
-                            poss = self.calc_poss_ng3(l2_chs[lc2_id], bid, 0, i) * f[lc2_id][i]
+                        for lc2_id in range(lc_id, len(l2_chs), len(l1_chs)):
+                            # if f[lc2_id][i] < self.eps: continue
+                            poss = self.calc_poss_ng3(l2_chs[lc2_id], bid, 0, i, g[lc2_id][i], f[lc2_id][i]) * f[lc2_id][i]
                             tmp_cp = g[lc2_id][i]
                             t = tmp_cp.split('/')
-                            poss *= self.dic.freq(t[len(t) - 1])
+                            poss *= self.dic.freq(t[len(t) - 1], self.wng['l'])
                             if poss > max_poss:
                                 max_poss = poss
                                 max_cp = tmp_cp + '/' + ch
@@ -183,17 +192,18 @@ class Translater:
                     # continue a word
                     for i in range(1, 7):
                         max_poss = -1; max_cp = ''
-                        for lc2_id in range(len(l2_chs)):
-                            if not ((l2_chs[lc2_id] & 65535) == lc): continue
+                        for lc2_id in range(lc_id, len(l2_chs), len(l1_chs)):
+                            # if f[lc2_id][i - 1] < self.eps: continue
                             poss = self.calc_poss_ng3(l2_chs[lc2_id], bid, i, i, g[lc2_id][i - 1], f[lc2_id][i - 1]) * f[lc2_id][i - 1]
                             tmp_cp = g[lc2_id][i - 1] + ch
                             if loop_i == len(procs):
                                 t = tmp_cp.split('/')
-                                poss *= self.dic.freq(t[len(t) - 1])
+                                poss *= self.dic.freq(t[len(t) - 1], self.wng['l'])
+                                poss *= self.dic.predict_acc_bk(l2_chs[lc2_id] & 65535, i)
                             if poss > max_poss:
                                 max_poss = poss
                                 max_cp = tmp_cp
-                            sv_f.append(max_poss); sv_g.append(max_cp)
+                        sv_f.append(max_poss); sv_g.append(max_cp)
                     n_f.append(sv_f); n_g.append(sv_g)
             f = n_f; g = n_g
             l1_chs = c1_chs; l2_chs = c2_chs
@@ -227,7 +237,7 @@ class Translater:
                         poss = self.calc_poss_ng(last_chs[lc_id], bid, 0, i) * f[lc_id][i]
                         tmp_cp = g[lc_id][i]
                         t = tmp_cp.split('/')
-                        poss *= self.dic.freq(t[len(t) - 1])
+                        poss *= self.dic.freq(t[len(t) - 1], self.wng['l'])
                         if poss > max_poss:
                             max_poss = poss
                             max_cp = tmp_cp + '/' + ch
@@ -240,7 +250,7 @@ class Translater:
                         tmp_cp = g[lc_id][i - 1] + ch
                         if loop_i == len(procs):
                             t = tmp_cp.split('/')
-                            poss *= self.dic.freq(t[len(t) - 1])
+                            poss *= self.dic.freq(t[len(t) - 1], self.wng['l'])
                         if poss > max_poss:
                             max_poss = poss
                             max_cp = tmp_cp

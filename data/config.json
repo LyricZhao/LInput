@@ -1,9 +1,9 @@
 {
     "n_gram": 2,
     "data": [
-        "data/arts/2016-02.txt"
+        "data/arts/2016-11.txt"
     ],
     "word": "data/jbc.txt",
     "dic": "data/dic.txt",
-    "model": "model/g4_debug_jieba_duoyin_dic_word_break_180m.model"
+    "model": "model/g5_debug_jieba_duoyin_dic_word_break_180m.model"
 }

@@ -15,6 +15,7 @@ class Trainer:
         self.dic_size = self.dic.size()
         self.count = [0] * self.dic_size
         self.mat = [[0.0 for j in range(self.dic_size)] for i in range(self.dic_size)]
+        self.sepy = {}
         return
 
     def write_into_file(self, output_path):
@@ -52,15 +53,26 @@ class Trainer:
 
     def insert_word(self, cha, chb, count):
         self.mat[self.dic.chs[cha]][self.dic.chs[chb]] += count
+        py_key = (self.dic.chs[cha] << 16) | self.dic.map_py[(self.dic.set_py[self.dic.chs[chb]])]
+        if not py_key in self.sepy:
+            self.sepy[py_key] = 0
+        self.sepy[py_key] += count
         return
+
+    def query_cp_sum(self, i, j):
+        py_key = (i << 16) | self.dic.map_py[(self.dic.set_py[j])]
+        if not py_key in self.sepy:
+            return 0
+        return self.sepy[py_key]
 
     def build(self):
         print('Building final mat file ... ', end='', flush=True)
         for i in range(self.dic_size):
-            if self.count[i] == 0:
-                continue
             for j in range(self.dic_size):
-                self.mat[i][j] /= self.count[i]
+                sum = self.query_cp_sum(i, j)
+                if sum == 0:
+                    continue
+                self.mat[i][j] /= sum
         print('done !')
         return
 
@@ -76,26 +88,16 @@ class Trainer:
 
     def feed(self, data_path, jbc=False):
         print('Feeding data in ' + data_path + ' ... ', flush=True)
-        if jbc:
-            with open(data_path, 'r') as f:
-                lines = f.readlines()
-                prog = 0; tot = len(lines); target = self.step
-                for line in lines:
-                    [w, c, v] = line.split()
-                    in_dict = True
-                    for ch in w:
-                        in_dict &= self.dic.has_key(ch)
-                    if in_dict:
-                        self.analyze_sentence(w, int(c))
-                    prog += 1
-                    if float(prog) / tot >= target - 1e-5:
-                        print('- Current progress: ' + str(target * 100) + ' %', flush=True)
-                        target += self.step
-        else:  
-            with open(data_path, 'r') as f:
-                for line in f.readlines():
-                    data = json.loads(line)['html']
-                    self.analyze(data)
+        with open(data_path, 'r') as f:
+            lines = f.readlines()
+            prog = 0; tot = len(lines); target = self.step
+            for line in lines:
+                data = json.loads(line)['html']
+                self.analyze(data)
+                prog += 1
+                if (float(prog) / tot) >= target - 1e-5:
+                    print('- Current progress: ' + str(target * 100) + ' %', flush=True)
+                    target += self.step
         print('- done !')
         return
 

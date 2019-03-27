@@ -67,16 +67,18 @@ class Dic:
         self.lacc[word][pos] += count
         return
 
-    def freq(self, word):
+    def freq(self, word, l):
         if word == '':
             return 1
         if not word in self.wdb:
-            return 0.1
-        # print('q' + word)
-        # print(1.0 * self.wdb[word] / self.word_count * 100000)
-        if len(word) >= 4 and word[1:4] == '经网络':
-            print((word, max(0.2, min(1.0 * self.wdb[word] / self.word_count * 100000, 1.0))))
-        return max(0.2, min(1.0 * self.wdb[word] / self.word_count * 100000, 1.0))
+            return 0.01
+            
+        # if len(word) >= 5:
+        #     print('q' + word)
+        #     print(min(1.0 * self.wdb[word] / self.word_count * (l ** len(word)), 2.0))
+        # if len(word) >= 4 and word[1:4] == '经网络':
+        #     print((word, max(0.2, min(1.0 * self.wdb[word] / self.word_count * 100000, 1.0))))
+        return min(1.0 * self.wdb[word] / self.word_count * (l ** (len(word) * 2)), 2.0)
 
     def iword2(self, lc, npos, py, count):
         if npos >= 7:
@@ -177,7 +179,6 @@ class Dic:
             return 0
         count = self.acc_word_ct(lc, nc, npos)
         sum = self.acc_ks(lc, npos, self.set_py[nc])
-        # print((count, sum))
         if sum == 0:
             return 0
         return float(count) / float(sum)
