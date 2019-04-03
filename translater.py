@@ -6,14 +6,13 @@ import struct
 from dic import Dic
 
 class Translater:
-    def __init__(self, dic, n_gram, model_path):
+    def __init__(self, dic, model_path):
         self.dic = dic
-        self.n_gram = n_gram
         self.load_model(model_path)
         self.set_weight(0.3, 0.00001)
         self.wng = {}
-        self.eps = 1e-5
-        self.set_weight_ng(1.5, 0.01, 0.01, 0.01, 0.2, 1, 30)
+        self.eps = 1e-3
+        self.set_weight_ng(2, 0.01, 0.1, 0.01, 0.6, 1, 30)
         return
 
     def set_weight_ng(self, a, b, c, d, e, q, l):
@@ -233,7 +232,7 @@ class Translater:
         encode = lambda llc, lc, bit: (llc << 19) | (lc << 3) | bit
         decode = lambda code: (code >> 19, (code >> 3) & 65535, code & 7)
         f = {}; f[encode(19981, 19981, 0)] = (1.0, '')
-        loop_i = 0
+        loop_i = 0; eps = self.eps
         for proc in procs:
             n_f = {}; loop_i += 1; is_last_proc = (loop_i == len(procs))
             for key in f:
@@ -247,7 +246,7 @@ class Translater:
                     # break
                     poss = self.calc_poss_ng3(l2c, bid, 0, bit, is_last=is_last_proc) * break_poss * value
                     new_key = encode(lc, bid, 0)
-                    if (poss > self.eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
+                    if (poss > eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
                         n_f[new_key] = (poss, result + '/' + ch)
                         # print((result + '/' + ch, poss))
                     # continue
@@ -259,9 +258,11 @@ class Translater:
                         poss *= self.dic.freq(last_word + ch, self.wng['l'])
                         # print((self.dic.predict_acc_bk(bid, bit), self.dic.freq(last_word + ch, self.wng['l'])))
                     # print((result + ch, poss))
-                    if (poss > self.eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
+                    if (poss > eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
                         n_f[new_key] = (poss, result + ch)
             f = n_f
+            if loop_i % 3 == 0:
+                eps *= 0.3
         max_poss = -1; answer = ''
         for key in f:
             if f[key][0] > max_poss:
@@ -319,12 +320,15 @@ class Translater:
                     answer = g[i][j]
         return answer
 
+    def move_s(self, sentence):
+        return ''.join(sentence.split('/'))
+
     def translate_file(self, input_path, output_path):
         print('Translating file ' + input_path + ' to ' + output_path + ' ... ', end='', flush=True)
         with open(input_path, 'r') as input:
             with open(output_path, 'w') as output:
                 for line in input.readlines():
-                    output.write(self.translate_sentence_ng3_opt(line))
+                    output.write(self.move_s(self.translate_sentence_ng3_opt(line)) + '\n')
         print('done !')
         return 
 
@@ -332,14 +336,12 @@ def translate(config_path, input_path, output_path):
     print('Loading config ... ', end='', flush=True)
     with open(config_path, 'r') as f:
         config = json.load(f)
-    n_gram = config['n_gram']
-    assert n_gram == 2 or n_gram == 3
     print('done !')
 
     dic = Dic()
     dic.read_dict(config['dic'], config['word'], True)
     
-    translater = Translater(dic, n_gram, config['model'])
+    translater = Translater(dic, config['model'])
     if input_path == '':
         translater.shell()
     else:

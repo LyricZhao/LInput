@@ -106,8 +106,6 @@ def train(config_path):
     print('Loading training config ... ', end='', flush=True)
     with open(config_path, 'r') as f:
         config = json.load(f)
-    n_gram = config['n_gram']
-    assert n_gram == 2 or n_gram == 3
     print('done !')
 
     dic = Dic()
