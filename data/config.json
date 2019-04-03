@@ -1,9 +1,17 @@
 {
     "n_gram": 2,
     "data": [
+        "data/arts/2016-02.txt",
+        "data/arts/2016-04.txt",
+        "data/arts/2016-05.txt",
+        "data/arts/2016-06.txt",
+        "data/arts/2016-07.txt",
+        "data/arts/2016-08.txt",
+        "data/arts/2016-09.txt",
+        "data/arts/2016-10.txt",
         "data/arts/2016-11.txt"
     ],
-    "word": "data/jbc.txt",
+    "word": "data/jbc_big.txt",
     "dic": "data/dic.txt",
-    "model": "model/g5_debug_jieba_duoyin_dic_word_break_180m.model"
+    "model": "model/g6_debug_jieba_duoyin_dic_word_break_All.model"
 }

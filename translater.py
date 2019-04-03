@@ -12,8 +12,8 @@ class Translater:
         self.load_model(model_path)
         self.set_weight(0.3, 0.00001)
         self.wng = {}
-        self.eps = 1e-2
-        self.set_weight_ng(0.6, 0.01, 0.01, 0.01, 0.4, 1, 30)
+        self.eps = 1e-5
+        self.set_weight_ng(1.5, 0.01, 0.01, 0.01, 0.2, 1, 30)
         return
 
     def set_weight_ng(self, a, b, c, d, e, q, l):
@@ -58,7 +58,10 @@ class Translater:
                 if len(args[0]) == 1 and args[0] >= 'a' and args[0] <= 'z':
                     self.wng[args[0]] = float(args[1])
                 else:
-                    print('Result: ' + self.translate_sentence_ng3(py))
+                    if args[0] == 'eps':
+                        self.eps = float(args[1])
+                    else:
+                        print('Result: ' + self.translate_sentence_ng3_opt(py))
         return
 
     def calc_poss(self, curr, next):
@@ -127,7 +130,7 @@ class Translater:
         #    print((self.dic.set[lc], self.dic.set[nc], npos, poss, self.mat[lc][nc]))
         return poss
 
-    def calc_poss_ng3(self, l2c, nc, npos, lp, aa='', bb=''):
+    def calc_poss_ng3(self, l2c, nc, npos, lp, aa='', bb='', is_last=False):
         poss = 0
         llc = l2c >> 16; lc = l2c & 65535
         if llc == 19981: llc = -1
@@ -145,6 +148,8 @@ class Translater:
                 poss += self.wng['a'] * self.dic.acc_word_ct3(l2c, nc)
             else:
                 poss += self.wng['a'] * self.dic.predict_acc_ct(lc, nc, npos - 1)
+            # if self.dic.set[lc] == '喜' and self.dic.set[nc] == '欢':
+            #    print(('poss', poss, npos))
             poss += self.wng['b'] * self.mat[lc][nc] # new word
         # if self.dic.set[llc] == '神' and self.dic.set[lc] == '经' and self.dic.set[nc] == '网':
         #     print((self.dic.set[nc], poss, aa, bb))
@@ -152,6 +157,8 @@ class Translater:
         #     print((self.dic.set[nc], poss, aa, bb))      
         # if (self.dic.set[nc] == '望' or self.dic.set[nc] == '落') and npos == 0:
         #     print((self.dic.set[nc], poss, aa, bb))
+        if is_last:
+            poss += self.wng['c'] * self.dic.predict_acc_bk(nc, npos)
         return poss
 
     def translate_sentence_ng3(self, sentence):
@@ -199,7 +206,7 @@ class Translater:
                             if loop_i == len(procs):
                                 t = tmp_cp.split('/')
                                 poss *= self.dic.freq(t[len(t) - 1], self.wng['l'])
-                                poss *= self.dic.predict_acc_bk(l2_chs[lc2_id] & 65535, i)
+                                poss *= self.dic.predict_acc_bk(bid, i)
                             if poss > max_poss:
                                 max_poss = poss
                                 max_cp = tmp_cp
@@ -213,6 +220,52 @@ class Translater:
                 if f[i][j] > max_poss:
                     max_poss = f[i][j]
                     answer = g[i][j]
+        return answer
+
+    def translate_sentence_ng3_opt(self, sentence):
+        procs = sentence.split()
+        if len(procs) <= 2:
+            return self.translate_sentence_ng(sentence)
+        if not len(procs):
+            return ''
+        for i in range(len(procs)):
+            procs[i] = procs[i].lower()
+        encode = lambda llc, lc, bit: (llc << 19) | (lc << 3) | bit
+        decode = lambda code: (code >> 19, (code >> 3) & 65535, code & 7)
+        f = {}; f[encode(19981, 19981, 0)] = (1.0, '')
+        loop_i = 0
+        for proc in procs:
+            n_f = {}; loop_i += 1; is_last_proc = (loop_i == len(procs))
+            for key in f:
+                (llc, lc, bit) = decode(key); l2c = (llc << 16) | lc
+                (value, result) = f[key]
+                result_words = result.split('/')
+                last_word = result_words[len(result_words) - 1]
+                break_poss = self.dic.freq(last_word, self.wng['l'])
+                for ch in self.dic.map[proc]:
+                    bid = self.dic.chs[ch + proc]
+                    # break
+                    poss = self.calc_poss_ng3(l2c, bid, 0, bit, is_last=is_last_proc) * break_poss * value
+                    new_key = encode(lc, bid, 0)
+                    if (poss > self.eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
+                        n_f[new_key] = (poss, result + '/' + ch)
+                        # print((result + '/' + ch, poss))
+                    # continue
+                    if bit == 6 or result == '':
+                        continue
+                    poss = self.calc_poss_ng3(l2c, bid, bit + 1, bit, is_last=is_last_proc) * value
+                    new_key = encode(lc, bid, bit + 1)
+                    if is_last_proc:
+                        poss *= self.dic.freq(last_word + ch, self.wng['l'])
+                        # print((self.dic.predict_acc_bk(bid, bit), self.dic.freq(last_word + ch, self.wng['l'])))
+                    # print((result + ch, poss))
+                    if (poss > self.eps) and ((not new_key in n_f) or (poss > n_f[new_key][0])):
+                        n_f[new_key] = (poss, result + ch)
+            f = n_f
+        max_poss = -1; answer = ''
+        for key in f:
+            if f[key][0] > max_poss:
+                max_poss, answer = f[key]
         return answer
 
     def translate_sentence_ng(self, sentence):
@@ -271,7 +324,7 @@ class Translater:
         with open(input_path, 'r') as input:
             with open(output_path, 'w') as output:
                 for line in input.readlines():
-                    output.write(self.translate_sentence_ng3(line))
+                    output.write(self.translate_sentence_ng3_opt(line))
         print('done !')
         return 
 
